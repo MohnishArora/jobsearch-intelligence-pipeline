@@ -1,0 +1,137 @@
+Technical Documentation: Automated Job Intelligence & Medallion Pipeline
+
+1. Project ObjectiveTo build a production-grade Data Engineering pipeline that automates 
+the discovery, ingestion, and multi-stage filtering of job opportunities. The system specifically 
+targets "Visa-Sponsorship Friendly" roles for OPT/H1-B candidates, while enforcing strict 
+experience-level thresholds (1-3 years for Engineers; <= 6 years for Analysts).
+
+
+2. System ArchitectureThe project follows the Medallion Architecture, ensuring data quality
+increases as it moves through the layers.
+    BRONZE (Raw): Landing zone for raw JSON data from SerpApi via dlt.
+    SILVER (Staging): Cleaning, schema enforcement, and "Intelligence" (Regex extraction).
+    GOLD (Marts): Business-ready "Strike List" with deduplicated, high-intent leads.
+
+
+3. Step-by-Step Implementation & Revisions
+    Phase I: Ingestion (The Bronze Layer)
+        Initial Setup: We used dlt to connect to the Google Jobs engine via SerpApi.
+        The Problem: We were pulling all available jobs, including those posted over 
+        a year ago, which wasted SerpApi credits and Snowflake storage.
+        The Revision: We modified ingest.py to dynamically calculate a date 21 weeks ago and 
+        append the after:YYYY-MM-DD operator to every search query.
+        Key Learning: Filtering at the source (Ingestion) is the most cost-effective way to 
+        manage API quotas.
+    
+    Phase II: Orchestration (Dagster)
+        Initial Setup: We used Dagster to schedule the dlt and dbt tasks.
+        Error 1 (Imports): Encountered ImportError: 'attempted relative import with no known 
+        parent package.'
+        Resolution: When running Dagster via the -f flag, relative dots (.assets) fail. 
+        We switched to absolute imports.
+        Error 2 (API Change): get_artifacts() caused a crash.
+        Resolution: The dagster-dbt library updated its syntax. We switched to the .stream() 
+        method to allow real-time logging.
+    
+    Phase III: The dbt "Custom Schema" Battle
+        The Problem: dbt was creating "ghost" schemas like SILVER_GOLD and SILVER_SILVER.
+        Error: This is dbt’s default behavior (Prefixing).
+        The Resolution: 1.  We created a macro called generate_schema_name.sql.
+        2.  The Mistake: We originally placed it in the models/ folder, so dbt ignored it.
+        3.  The Fix: We moved it to the macros/ folder. This "unlocked" the ability to have clean,
+        separate GOLD and SILVER schemas.
+        
+    Phase IV: Advanced Intelligence (Silver & Gold)
+        The Requirement: Automatically ignore "Senior" roles and verify years of experience.
+        The Regex Trap: We initially used Python-style regex (?:...) and \d. Snowflake threw 
+        an error because it uses POSIX ERE, which doesn't support non-capturing groups.
+        The Final Logic:Seniority: A Title-check for keywords like 'Sr', 'Lead', 'Staff'.
+        Experience: A robust Snowflake-safe regex ([0-9]+)[[:space:]]*(-|to|year|yr) to extract 
+        the minimum years required.
+        Tiered Thresholds: 1-3 years for Data/Analytics Engineers; up to 6 years for Business/Ops Analysts.
+
+
+4. Master Code Reference (Final Versions)
+    A. Custom Schema Macro
+    Location: dbt_project/macros/generate_schema_name.sql
+    SQL
+        {% macro generate_schema_name(custom_schema_name, node) -%}
+            {%- set default_schema = target.schema -%}
+            {%- if custom_schema_name is none -%}
+                {{ default_schema }}
+            {%- else -%}
+                {{ custom_schema_name | trim }}
+            {%- endif -%}
+        {%- endmacro %}
+
+    B. Silver Layer Logic
+    Location: dbt_project/models/staging/stg_jobs.sql
+        SQL
+        {{ config(materialized='view') }}
+
+        SELECT
+            job_id AS job_key,
+            title AS job_title,
+            company_name,
+            location AS job_location,
+            description,
+            search_query_category AS search_category,
+            detected_extensions__posted_at AS posted_at_relative,
+            
+            -- Flag Seniority
+            REGEXP_LIKE(title, '.*(Senior|Sr\\.|Lead|Principal|Staff|Head|Manager|Director|VP).*', 'i') as is_senior_title,
+
+            -- Extract Experience (Snowflake POSIX compliant)
+            TRY_TO_NUMBER(
+                REGEXP_SUBSTR(description, '([0-9]+)[[:space:]]*(-|to|year|yr)', 1, 1, 'e', 1)
+            ) as min_experience_years,
+
+            -- Sponsorship Flags
+            CASE 
+                WHEN LOWER(description) LIKE '%us citizen only%' 
+                OR LOWER(description) LIKE '%security clearance%'
+                THEN TRUE ELSE FALSE 
+            END AS is_citizen_only,
+
+            CASE 
+                WHEN LOWER(description) LIKE '%no sponsorship%' 
+                OR LOWER(description) LIKE '%does not sponsor%' 
+                THEN FALSE ELSE TRUE 
+            END AS is_potential_lead,
+
+            CURRENT_TIMESTAMP() AS transformed_at
+        FROM {{ source('serpapi', 'raw_jobs') }}
+
+    C. Gold Layer Logic
+    Location: dbt_project/models/marts/fct_jobs.sql
+        SQL
+        {{ config(materialized='table') }}
+
+        WITH filtered_base AS (
+            SELECT * FROM {{ ref('stg_jobs') }}
+            WHERE is_citizen_only = FALSE 
+            AND is_potential_lead = TRUE 
+            AND is_senior_title = FALSE 
+        )
+
+        SELECT 
+            job_title, company_name, job_location, search_category,
+            min_experience_years, posted_at_relative,
+            transformed_at as discovery_time,
+            'https://www.google.com/search?q=' || REPLACE(job_title || ' ' || company_name, ' ', '+') as apply_link
+        FROM filtered_base
+        WHERE (
+            -- DE/AE Logic
+            (search_category IN ('Data Engineer', 'Analytics Engineer') AND (min_experience_years BETWEEN 1 AND 3 OR min_experience_years IS NULL))
+            OR
+            -- BA/Ops Logic
+            (search_category = 'Data Operations and Business Analyst' AND (min_experience_years <= 6 OR min_experience_years IS NULL))
+        )
+        QUALIFY ROW_NUMBER() OVER (PARTITION BY job_key ORDER BY discovery_time DESC) = 1
+
+
+5. Maintenance & Operations
+    Daily Sync: Run the Dagster "Materialize All" to fetch new jobs.
+    Logic Updates: If you want to change filters, edit the .sql files and run dbt run in the 
+    terminal. This costs zero credits.
+    Snowflake: View the GOLD.FCT_JOBS table for your daily application list.

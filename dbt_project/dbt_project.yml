@@ -1,0 +1,24 @@
+name: 'dbt_project'
+version: '1.0.0'
+
+profile: 'dbt_project'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:         # directories to be removed by `dbt clean`
+  - "target"
+  - "dbt_packages"
+
+models:
+  dbt_project:
+    staging:
+      +materialized: view
+      +schema: silver  # This will result in SILVER_STAGING (dbt's default behavior)
+    marts:
+      +materialized: table
+      +schema: gold    # This tells dbt to look for a GOLD schema

@@ -1,0 +1,10 @@
+version: 2
+
+sources:
+  - name: serpapi
+    description: "Raw job data ingested from Google Jobs via dlt"
+    database: JOB_SEARCH_DB
+    schema: BRONZE
+    tables:
+      - name: raw_jobs
+        description: "The main table containing job titles, companies, and locations"
