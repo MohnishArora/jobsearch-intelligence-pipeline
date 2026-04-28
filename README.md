@@ -11,7 +11,7 @@
 
 ## Architecture & Data Flow
 
-Click the diagram below to explore the interactive version on Netlify.
+Click the image below to explore the interactive version on Netlify.
 
 [![Job Intelligence Pipeline Architecture](./jobsearch-pipeline-architecture.png)](https://jobsearch-pipeline-architecture.netlify.app/)
 
