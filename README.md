@@ -7,8 +7,8 @@
 
 **Result:** End-to-end production-grade pipeline that automatically discovers, ingests, transforms, and filters job postings into a daily curated strike list of high-intent leads
 
-[![View Architecture Pipeline](https://jobsearch-pipeline-architecture.netlify.app/)
-
+[View the Job Intelligence Pipeline Architecture](https://jobsearch-pipeline-architecture.netlify.app/)
+---
 ---
 
 ## The Origin
