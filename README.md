@@ -7,8 +7,22 @@
 
 **Result:** End-to-end production-grade pipeline that automatically discovers, ingests, transforms, and filters job postings into a daily curated strike list of high-intent leads
 
-[View the Job Intelligence Pipeline Architecture](https://jobsearch-pipeline-architecture.netlify.app/)
 ---
+
+## Architecture & Data Flow
+
+Click the diagram below to explore the interactive version on Netlify.
+
+[![Job Intelligence Pipeline Architecture](./Architecture.jpg)](https://jobsearch-pipeline-architecture.netlify.app/)
+
+---
+
+### The Stack
+* **Orchestration:** Dagster (Declarative Automation)
+* **Ingestion:** `dlt` (Data Load Tool) & SerpAPI
+* **Warehouse:** Snowflake (Medallion Architecture: Bronze → Silver → Gold)
+* **Transformation:** dbt (Data Build Tool)
+
 ---
 
 ## The Origin
