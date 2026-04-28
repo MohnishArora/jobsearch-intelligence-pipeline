@@ -13,7 +13,7 @@
 
 Click the diagram below to explore the interactive version on Netlify.
 
-[![Job Intelligence Pipeline Architecture](./Architecture.jpg)](https://jobsearch-pipeline-architecture.netlify.app/)
+[![Job Intelligence Pipeline Architecture](./jobsearch-pipeline-architecture.png)](https://jobsearch-pipeline-architecture.netlify.app/)
 
 ---
 
